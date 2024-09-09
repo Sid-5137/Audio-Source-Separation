@@ -19,11 +19,13 @@ lib64/
 parts/
 sdist/
 var/
+data/
 wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.code-workspace
 MANIFEST
 
 # PyInstaller
