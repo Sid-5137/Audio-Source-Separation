@@ -42,5 +42,5 @@ Ensure you have the following dependencies installed:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/custom_unet.git
-   cd custom_unet
+   git clone https://github.com/Sid-5137/Audio-Source-Separation.git
+   cd Audio-Source-Separation
