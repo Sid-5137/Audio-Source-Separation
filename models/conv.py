@@ -1,32 +1,36 @@
 # conv.py
 from torch import nn
-from torch.nn import functional as F
+import torch.nn.functional as F
 
 class ConvLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, conv_type="normal", transpose=False):
+    def __init__(self, n_inputs, n_outputs, kernel_size, stride, conv_type, padding=0, transpose=False):
         super(ConvLayer, self).__init__()
         self.transpose = transpose
         self.stride = stride
         self.kernel_size = kernel_size
         self.conv_type = conv_type
+        self.padding = padding
 
-        NORM_CHANNELS = 8  # Number of channels for GroupNorm
-
-        if transpose:
-            self.conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size, stride, padding=kernel_size//2)
+        # Use Conv2d instead of Conv1d
+        if self.transpose:
+            self.filter = nn.ConvTranspose2d(n_inputs, n_outputs, self.kernel_size, stride, padding=self.padding)
         else:
-            self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=kernel_size//2)
+            self.filter = nn.Conv2d(n_inputs, n_outputs, self.kernel_size, stride, padding=self.padding)
 
+        # Choose normalization type
+        NORM_CHANNELS = 8
         if conv_type == "gn":
-            assert out_channels % NORM_CHANNELS == 0
-            self.norm = nn.GroupNorm(out_channels // NORM_CHANNELS, out_channels)
+            assert n_outputs % NORM_CHANNELS == 0
+            self.norm = nn.GroupNorm(n_outputs // NORM_CHANNELS, n_outputs)
         elif conv_type == "bn":
-            self.norm = nn.BatchNorm2d(out_channels)
+            self.norm = nn.BatchNorm2d(n_outputs, momentum=0.01)
         else:
-            self.norm = None
+            self.norm = None  # If no normalization is specified
 
     def forward(self, x):
-        x = self.conv(x)
+        # Apply the convolution
+        out = self.filter(x)
         if self.norm:
-            x = self.norm(x)
-        return F.relu(x)
+            out = self.norm(out)
+        out = F.relu(out) if not self.conv_type == "normal" else F.leaky_relu(out)
+        return out

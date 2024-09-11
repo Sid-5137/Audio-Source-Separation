@@ -1,0 +1,5 @@
+Epoch 2/10
+Training Loss: 0.2956
+Validation Loss: 1.2042
+Average SDR: nan
+
