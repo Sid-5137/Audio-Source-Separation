@@ -16,6 +16,7 @@ def load_model(model_path, device):
 def separate_sources(model, mixture_path, output_dir, n_fft=1024, hop_length=512):
     # Load the mixture audio
     mixture, sr = torchaudio.load(mixture_path)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     mixture_spec = torch.stft(mixture, n_fft=n_fft, hop_length=hop_length, return_complex=True).unsqueeze(0).to(device)
     mixture_mag = torch.abs(mixture_spec)
 
