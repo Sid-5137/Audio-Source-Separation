@@ -41,20 +41,24 @@ class ModifiedUNet(nn.Module):
             if target_shape is None:
                 raise ValueError("target_shape must be provided when calling the forward method.")
 
-        # Encoder with skip connections
-        enc1 = checkpoint(self.enc1, x)
-        enc2 = checkpoint(self.enc2, enc1)
-        enc3 = checkpoint(self.enc3, enc2)
-        enc4 = checkpoint(self.enc4, enc3)
+        # Ensure input requires gradients if needed
+        if not x.requires_grad:
+            x.requires_grad = True
 
-        # Bottleneck
-        bottleneck = checkpoint(self.bottleneck, enc4)
+        # Encoder with skip connections using checkpoint with use_reentrant=False
+        enc1 = checkpoint(self.enc1, x, use_reentrant=False)
+        enc2 = checkpoint(self.enc2, enc1, use_reentrant=False)
+        enc3 = checkpoint(self.enc3, enc2, use_reentrant=False)
+        enc4 = checkpoint(self.enc4, enc3, use_reentrant=False)
 
-        # Decoder with skip connections and center cropping
-        dec4 = checkpoint(self.dec4, torch.cat((bottleneck, centre_crop(enc4, bottleneck)), dim=1))
-        dec3 = checkpoint(self.dec3, torch.cat((dec4, centre_crop(enc3, dec4)), dim=1))
-        dec2 = checkpoint(self.dec2, torch.cat((dec3, centre_crop(enc2, dec3)), dim=1))
-        dec1 = checkpoint(self.dec1, torch.cat((dec2, centre_crop(enc1, dec2)), dim=1))
+        # Bottleneck using checkpoint with use_reentrant=False
+        bottleneck = checkpoint(self.bottleneck, enc4, use_reentrant=False)
+
+        # Decoder with skip connections and center cropping using checkpoint with use_reentrant=False
+        dec4 = checkpoint(self.dec4, torch.cat((bottleneck, centre_crop(enc4, bottleneck)), dim=1), use_reentrant=False)
+        dec3 = checkpoint(self.dec3, torch.cat((dec4, centre_crop(enc3, dec4)), dim=1), use_reentrant=False)
+        dec2 = checkpoint(self.dec2, torch.cat((dec3, centre_crop(enc2, dec3)), dim=1), use_reentrant=False)
+        dec1 = checkpoint(self.dec1, torch.cat((dec2, centre_crop(enc1, dec2)), dim=1), use_reentrant=False)
 
         # Final output layer
         out = self.final(dec1)
