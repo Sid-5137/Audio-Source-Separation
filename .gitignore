@@ -53,6 +53,7 @@ coverage.xml
 .pytest_cache/
 cover/
 musdb18hq/
+musdb_specs
 # Translations
 *.mo
 *.pot

@@ -16,14 +16,15 @@ def main():
     parser.add_argument('--audio_path', type=str, help="Path to test audio file (for test mode)")
     parser.add_argument('--epochs', type=int, default=10, help="Number of training epochs")
     parser.add_argument('--batch_size', type=int, default=32, help="Batch size")
+    parser.add_argument('--limit', type=int, default=None, help="Limit number of tracks to preprocess")
     args = parser.parse_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = ModifiedUNet(in_channels=2, out_channels=8)
 
     if args.mode == "preprocess":
-        preprocess_dataset(args.musdb_root, args.spec_dir)
-        print("Preprocessing completed.")
+        num_tracks = preprocess_dataset(args.musdb_root, args.spec_dir, limit=args.limit)
+        print(f"Preprocessing completed. Processed {num_tracks} tracks.")
     elif args.mode == "train":
         dataset = PrecomputedMusdbDataset(spec_dir=args.spec_dir)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=16, pin_memory=True)
