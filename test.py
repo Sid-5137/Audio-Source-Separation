@@ -1,83 +1,71 @@
 # test.py
-import torch
-import torchaudio
-from torch.utils.data import DataLoader
-from models.model import UNet
-from dataset.dataset import MUSDB18HQDataset
-import numpy as np
-from tqdm import tqdm
-import mir_eval
 import os
+import torch
+import torch.nn as nn
+import torchaudio
+from tqdm import tqdm
+import soundfile as sf
+from models.unet import ModifiedUNet
+from utils.audio_utils import chunk_spectrogram
 
-# Function to calculate SDR using mir_eval
-def calculate_sdr(estimates, references):
-    sdr_values = []
-    for i in range(len(estimates)):
-        sdr, _, _, _ = mir_eval.separation.bss_eval_sources(
-            references[i].cpu().numpy(), estimates[i].cpu().numpy()
-        )
-        sdr_values.append(sdr)
-    return np.mean(sdr_values)
-
-# Load the trained model
-def load_model(model_path, device):
-    model = UNet(in_channels=1, out_channels=4).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    model.eval()  # Set model to evaluation mode
-    print(f"Model loaded from {model_path}")
-    return model
-
-# Function to test the model on the test dataset
-def test_model(model, test_loader, device):
+def test_model_on_file(model, audio_path, device, output_dir="separated_audio", batch_size=32, device_ids=[0, 1]):
     model.eval()
-    sdr_values = []
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model, device_ids=device_ids)
+    model.to(device)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    audio, sample_rate = torchaudio.load(audio_path)
+    if sample_rate != 44100:
+        resampler = torchaudio.transforms.Resample(sample_rate, 44100)
+        audio = resampler(audio)
+    if audio.shape[0] != 2:
+        raise ValueError("Input audio must be stereo (2 channels).")
 
+    transform = torchaudio.transforms.Spectrogram(n_fft=1024, hop_length=256, power=None)
+    complex_spec = transform(audio)
+    magnitude_spec = complex_spec.abs()
+    phase_spec = complex_spec.angle()
+    mix_spec = torch.log1p(magnitude_spec)
+    mix_chunks = chunk_spectrogram(mix_spec, 512)
+
+    num_chunks = len(mix_chunks)
+    batches = [mix_chunks[i:i + batch_size] for i in range(0, num_chunks, batch_size)]
+    
+    full_pred_specs = {s: [] for s in range(4)}
     with torch.no_grad():
-        with tqdm(test_loader, desc="Testing") as pbar:
-            for inputs_mag, targets_mag, inputs_spec, vocals_spec, drums_spec, bass_spec, other_spec in pbar:
-                inputs_mag, targets_mag = inputs_mag.to(device), targets_mag.to(device)
+        for batch in tqdm(batches, desc="Processing Chunks"):
+            batch_tensor = torch.stack(batch).to(device)
+            pred_spec = model(batch_tensor)
+            pred_spec = pred_spec.cpu()
+            for b in range(pred_spec.size(0)):
+                for s in range(4):
+                    full_pred_specs[s].append(torch.expm1(pred_spec[b, s]))
 
-                # Forward pass
-                outputs_mag = model(inputs_mag)
+    target_time_frames = magnitude_spec.shape[-1]
+    full_pred_magnitudes = [torch.cat(full_pred_specs[s], dim=-1)[..., :target_time_frames] for s in range(4)]
+    full_mix_magnitude = torch.cat(mix_chunks, dim=-1)[..., :target_time_frames]
+    full_mix_magnitude = torch.expm1(full_mix_magnitude)
 
-                # Calculate SDR values for testing
-                estimates = torch.cat([outputs_mag[:, i, :, :].unsqueeze(0) for i in range(4)], dim=0)
-                references = torch.cat([targets_mag[:, i, :, :].unsqueeze(0) for i in range(4)], dim=0)
-                sdr = calculate_sdr(estimates, references)
-                sdr_values.append(sdr)
+    full_pred_specs = [mag * torch.exp(1j * phase_spec) for mag in full_pred_magnitudes]
+    full_mix_spec = full_mix_magnitude * torch.exp(1j * phase_spec)
 
-                pbar.set_postfix(sdr=sdr)
+    inverse_transform = torchaudio.transforms.InverseSpectrogram(n_fft=1024, hop_length=256)
+    mix_audio = inverse_transform(full_mix_spec)
+    source_audios = [inverse_transform(pred_spec) for pred_spec in full_pred_specs]
 
-    avg_sdr = np.mean(sdr_values)
-    print(f"Average SDR on Test Set: {avg_sdr:.4f}")
-    return avg_sdr
-
-# Main function to run testing
-def main():
-    # Paths to model and test dataset
-    model_path = 'logs/model_epoch_10.pth'  # Update with the correct path to the saved model
-    test_dir = 'path/to/musdb18hq/test'    # Update with the correct path to the test dataset
-
-    # Set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Load the test dataset
-    test_dataset = MUSDB18HQDataset(test_dir)
-    test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
-
-    # Load the trained model
-    model = load_model(model_path, device)
-
-    # Test the model and log results
-    avg_sdr = test_model(model, test_loader, device)
-
-    # Save test results
-    log_dir = 'logs/'
-    os.makedirs(log_dir, exist_ok=True)
-    test_log_file = os.path.join(log_dir, 'test_results.txt')
-    with open(test_log_file, 'a') as f:
-        f.write(f"Average SDR on Test Set: {avg_sdr:.4f}\n")
+    file_name = os.path.splitext(os.path.basename(audio_path))[0]
+    sf.write(f"{output_dir}/{file_name}_mix.wav", mix_audio.T.numpy(), 44100)
+    for s, source_audio in enumerate(source_audios):
+        source_name = ['vocals', 'drums', 'bass', 'other'][s]
+        sf.write(f"{output_dir}/{file_name}_{source_name}.wav", source_audio.T.numpy(), 44100)
 
 if __name__ == "__main__":
-    main()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = ModifiedUNet(in_channels=2, out_channels=8)
+    model.load_state_dict(torch.load("unet_model_epoch1.pth"))
+    print("Loaded pretrained model from epoch 1")
 
+    audio_path = "/home/sid/Desktop/Projects/Samsung_PRISM/Project_ausep/Code/musdb18hq/test/Al James - Schoolboy Facination/mixture.wav"
+    test_model_on_file(model, audio_path, device, output_dir="separated_audio")
+    print("Testing complete. Check 'separated_audio' folder for WAV files.")

@@ -52,7 +52,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+musdb18hq/
 # Translations
 *.mo
 *.pot
