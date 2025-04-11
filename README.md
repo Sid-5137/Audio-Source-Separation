@@ -1,5 +1,3 @@
-Here's an updated version of your `README.md` tailored to reflect the modular code structure we’ve developed, your use of the MUSDB18-HQ dataset, and the specifics of your project (e.g., dual-GPU support, precomputed spectrograms, and current progress). I’ve kept the structure intact and filled in the details based on our work so far.
-
 # Custom U-Net for Audio Source Separation
 
 This project implements a custom U-Net model for audio source separation, targeting the MUSDB18-HQ dataset. The model separates stereo audio mixtures into four stems: vocals, drums, bass, and "other" (remaining instruments), using a spectrogram-based approach with PyTorch.
