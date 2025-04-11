@@ -7,8 +7,8 @@ from tqdm import tqdm
 
 def preprocess_dataset(musdb_root, output_dir="musdb_specs", subset="train"):
     os.makedirs(output_dir, exist_ok=True)
-    mus = musdb.DB(root=musdb_root)
-    tracks = mus.load_mus_tracks(subset=subset)
+    mus = musdb.DB(root=musdb_root, is_wav=True)
+    tracks = mus.load_mus_tracks(subsets=subset)
     transform = torchaudio.transforms.Spectrogram(n_fft=1024, hop_length=256, power=2)
     for i, track in enumerate(tqdm(tracks, desc=f"Preprocessing {subset} Tracks")):
         mix = torch.tensor(track.audio.T, dtype=torch.float32)
