@@ -117,7 +117,6 @@ python main.py --mode test --audio_path ./musdb18hq/test/Al\ James\ -\ Schoolboy
 
 - MUSDB18-HQ creators for the dataset.
 - PyTorch and torchaudio communities for robust tools.
-- xAI’s Grok for assistance in debugging and optimization.
 
 *Last Updated: April 10, 2025*
 
